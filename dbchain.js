@@ -50,7 +50,7 @@ class Blockchain {
   /**
    *
    * @param newBlock
-   * @returns {Promise<boolean>}
+   * @returns {Promise<boolean>}, new block height
    */
   async addBlock(newBlock){
     if (!this.chain) {
@@ -77,7 +77,7 @@ class Blockchain {
     }
 
     console.log('Block added');
-    return true;
+    return newBlock.height;
   }
 
   /**

@@ -37,7 +37,7 @@ async function start() {
 
     // Set stored request to signed state
     let updatedRequest = storedRequest;
-    updatedRequest.messageSignature = true;
+    updatedRequest.messageSignature = 'valid';
     await requestDb.addLevelDBData(storedRequest.address, updatedRequest);
 
     updatedRequest = updateLifetimeFor(updatedRequest);
@@ -53,6 +53,16 @@ async function start() {
   function updateLifetimeFor(request) {
     request.requestTimeStamp = Math.floor((300 - (Date.now() - request.requestTimeStamp) / 1000));
     return request;
+  }
+
+  function validateStory(story) {
+    // Max 500 bytes check
+    if(Buffer.byteLength(story, 'utf8') > 500) return false;
+
+    // Max 250 words check
+    if(story.split(" ").length > 250) return false;
+
+    return true;
   }
 
   /**
@@ -109,6 +119,57 @@ async function start() {
       "registerStar": true,
       "status": {...validatedRequest}
     }
+    res.send(response);
+  });
+
+  app.post('/block', async function (req, res) {
+    if (
+      typeof req.body.address !== 'string' ||
+      !req.body.star ||
+      typeof req.body.star.dec !== 'string' ||
+      typeof req.body.star.ra !== 'string' ||
+      typeof req.body.star.story !== 'string'
+    ) {
+      res.status(400).send({error: 'Request requires an address key and a star object containing dec, ra and story properties'});
+    }
+
+    const storedRequest = await requestDb.getLevelDBData(req.body.address);
+
+    if (!storedRequest) {
+      res.status(404).send({error: 'Request address does not exist.'});
+    }
+
+    if ((Date.now() - storedRequest.requestTimeStamp) > (300 * 1000)) {
+      res.status(400).send({error: 'Request expired.'})
+    }
+
+    if (!storedRequest.messageSignature || storedRequest.messageSignature !== 'valid') {
+      res.status(400).send({error: 'You must verify the message before adding a star.'})
+    }
+
+    // Todo: Check on 250 words / 500 bytes per story
+    if (!validateStory(req.body.star.story)) {
+      res.status(400).send({error: 'Stories are limited to 500 bytes and 250 words.'})
+    }
+
+    if (req.body.star.mag && typeof req.body.star.mag !== 'string') {
+      res.status(400).send({error: 'Optional value magnitude must be of type string.'})
+    }
+
+    if (req.body.star.cen && typeof req.body.star.cen !== 'string') {
+      res.status(400).send({error: 'Optional value centaurus must be of type string.'})
+    }
+
+    req.body.star.story = new Buffer.from(req.body.star.story, 'utf8').toString('hex');
+    const newStar = new Block(
+      {
+        "address": req.body.address,
+        "star": req.body.star
+      }
+    );
+
+    const newBlockHeight = await bc.addBlock(newStar);
+    const response = await bc.getBlock(newBlockHeight);
     res.send(response);
   });
 
