@@ -149,6 +149,31 @@ class Blockchain {
   }
 
   /**
+   * Search whole blockchain for any block that has the property <field> with <value>.
+   * If no blocks are found returns empty array.
+   *
+   * @param field
+   * @param value
+   * @param inBody bool, search for matching value in body. Defaults to false, searches in block meta data
+   * @returns {Promise<array:Block object>}
+   */
+  async findBlocksBy(field, value, inBody = false) {
+    const height = await this.getBlockHeight();
+    const result = [];
+
+    for (let i = 0; i < height; i++) {
+      let currentBlock = await this.getBlock(i);
+
+      let compareIn = inBody? currentBlock.body : currentBlock;
+
+      if(compareIn[field] && compareIn[field] === value) {
+        result.push(currentBlock);
+      }
+    }
+    return result;
+  }
+
+  /**
    *
    * @param blockHeight: int index of block in the chain, starting from 0 (Genesis Block)
    * @returns {Promise<Object>}

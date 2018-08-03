@@ -1,6 +1,5 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const bitcoin = require('bitcoinjs-lib');
 const bitcoinMessage = require('bitcoinjs-message');
 const {Block, Blockchain} = require('./dbchain');
 const db = require('./database');
@@ -10,9 +9,13 @@ async function start() {
   const requestDb = new db('requests');
   await bc.init();
   const app = express();
-
   // Parsing application/json data inputs
   app.use(bodyParser.json({type: 'application/json'}));
+
+
+
+
+  /** INTERNAL FUNCTIONS **/
 
   /**
    * Validates if signature is correct for the passed stored request object.
@@ -44,6 +47,7 @@ async function start() {
     return updatedRequest;
   }
 
+
   /**
    * Injects remaining lifetime for request
    *
@@ -55,6 +59,21 @@ async function start() {
     return request;
   }
 
+
+  /**
+   * Mutates star object adding decoded story value based on contained story value
+   * @param starObject
+   */
+  function decodeStory(starObject) {
+    return starObject.storyDecoded = Buffer.from(starObject.story, 'hex').toString('utf8');
+  }
+
+
+  /**
+   * Validates the story parameter
+   * @param story
+   * @returns {boolean}
+   */
   function validateStory(story) {
     // Max 500 bytes check
     if(Buffer.byteLength(story, 'utf8') > 500) return false;
@@ -64,6 +83,9 @@ async function start() {
 
     return true;
   }
+
+
+  /** PUBLIC ENDPOINTS **/
 
   /**
    * Endpoint: request validation
@@ -90,7 +112,7 @@ async function start() {
 
   /**
    * Endpoint: validate message
-   * Method: Post
+   * Method: POST
    * Accepts: JSON object {address: string, signature:string}
    * Response: JSON object {}
    */
@@ -118,10 +140,19 @@ async function start() {
     const response = {
       "registerStar": true,
       "status": {...validatedRequest}
-    }
+    };
+
     res.send(response);
   });
 
+  /**
+   * Endpoint block
+   * Method: POST
+   * Accepts: JSON object containing
+   * string address
+   * star object with dec, ra, story values (requried) and mag/cen values (optional)
+   * Does store other values in star object but without any meaning or validation.
+   */
   app.post('/block', async function (req, res) {
     if (
       typeof req.body.address !== 'string' ||
@@ -135,27 +166,22 @@ async function start() {
 
     const storedRequest = await requestDb.getLevelDBData(req.body.address);
 
+    // Input data validation
     if (!storedRequest) {
       res.status(404).send({error: 'Request address does not exist.'});
     }
-
     if ((Date.now() - storedRequest.requestTimeStamp) > (300 * 1000)) {
       res.status(400).send({error: 'Request expired.'})
     }
-
     if (!storedRequest.messageSignature || storedRequest.messageSignature !== 'valid') {
       res.status(400).send({error: 'You must verify the message before adding a star.'})
     }
-
-    // Todo: Check on 250 words / 500 bytes per story
     if (!validateStory(req.body.star.story)) {
       res.status(400).send({error: 'Stories are limited to 500 bytes and 250 words.'})
     }
-
     if (req.body.star.mag && typeof req.body.star.mag !== 'string') {
       res.status(400).send({error: 'Optional value magnitude must be of type string.'})
     }
-
     if (req.body.star.cen && typeof req.body.star.cen !== 'string') {
       res.status(400).send({error: 'Optional value centaurus must be of type string.'})
     }
@@ -173,23 +199,55 @@ async function start() {
     res.send(response);
   });
 
-/*
-  app.get('/block/:id', async function (req, res) {
-    const block = await bc.getBlock(req.params.id);
-    res.send(block)
+
+  /**
+   * Endpoint block/:height
+   * Method: GET
+   * Accepts: height integer.
+   * Returns: {block} with decoded story, 404 error
+   */
+  app.get('/block/:height', async function (req, res) {
+    const response = await bc.getBlock(req.params.height);
+    if (!response) {
+      res.status(404).send({error: `Block #${req.params.height} does not exist.`});
+    }
+    if (response.body.star && response.body.star.story) {
+      decodeStory(response.body.star);
+    }
+    res.send(response);
   });
 
-  app.post('/block', async function (req, res) {
-    if (typeof req.body.body !== 'string') {
-      res.status(400).send({ error: 'Request requires a body key populated with string data' });
+
+  /**
+   * Endpoint block/:hash
+   * Method: GET
+   * Accepts: hash string.
+   * Returns: {block} with decoded story, 404 error
+   */
+  app.get('/stars/hash::hash', async function (req, res) {
+    const response = await bc.findBlocksBy('hash', req.params.hash, false);
+
+    if (response.length === 0) {
+      res.status(404).send({error: `Block with hash ${req.params.hash} does not exist.`})
     }
 
-    await bc.addBlock(new Block(req.body.body));
-    const height = await bc.getBlockHeight();
-    const newBlock = await bc.getBlock(height-1);
-    res.send(newBlock);
+    response.map(block => { decodeStory(block.body.star) });
+    res.send(response[0]);
   });
-*/
+
+
+  /**
+   * Endpoint stars/address::address
+   * Method: GET
+   * Accepts: address string.
+   * Returns: {block} with decoded story, 404 error
+   */
+  app.get('/stars/address::address', async function (req, res) {
+    const response = await bc.findBlocksBy('address', req.params.address, true);
+    response.map(block => { decodeStory(block.body.star) });
+    res.send(response);
+  });
+
   app.listen(8000, () => console.log('App listening on port 8000!'))
 }
 
