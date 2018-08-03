@@ -37,7 +37,7 @@ class Blockchain {
    * @returns {Promise<void>}
    */
   async init () {
-    this.chain = await new db('./blockchain_old');
+    this.chain = await new db('./blockchain');
     const empty = await this.chain.isEmpty();
     if (empty) {
       console.log('generating genesis block');
