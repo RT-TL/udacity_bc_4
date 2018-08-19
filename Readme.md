@@ -26,8 +26,8 @@ POST http://0.0.0.0:8000/requestValidation
 POST http://0.0.0.0:8000/message-signature/validate
 POST http://0.0.0.0:8000/block
 GET http://0.0.0.0:8000//block/:height
-GET http://0.0.0.0:8000//stars/address::address
-GET http://0.0.0.0:8000//stars/:hash
+GET http://0.0.0.0:8000/stars/address::address
+GET http://0.0.0.0:8000/stars/:hash
 ```
 
 ### Creation of blocks

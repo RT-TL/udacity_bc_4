@@ -104,6 +104,13 @@ async function start() {
       "requestTimeStamp": timestamp,
       "message": `${req.body.address}:${timestamp}:starRegistry`,
     };
+
+    // If a still valid request already exists, return this request instead of overwriting it.
+    const existingRequest = await requestDb.getLevelDBData(req.body.address);
+    if (existingRequest !== null && !(Date.now() - existingRequest.requestTimeStamp) > (300 * 1000)) {
+      return existingRequest;
+    }
+
     await requestDb.addLevelDBData(req.body.address, response);
     response = updateLifetimeFor(response);
     res.send(response);
@@ -194,6 +201,11 @@ async function start() {
       }
     );
 
+    // Invalidate request
+    storedRequest.messageSignature = 'invalid';
+    requestDb.addLevelDbData(req.body.address, storedRequest);
+
+    // Add new star
     const newBlockHeight = await bc.addBlock(newStar);
     const response = await bc.getBlock(newBlockHeight);
     res.send(response);
