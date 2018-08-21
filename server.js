@@ -9,6 +9,7 @@ async function start() {
   const requestDb = new db('requests');
   await bc.init();
   const app = express();
+  const VALIDATION_WINDOW = 300;
   // Parsing application/json data inputs
   app.use(bodyParser.json({type: 'application/json'}));
 
@@ -49,13 +50,37 @@ async function start() {
 
 
   /**
+   * Calculates the left over seconds of the validation window based on current time.
+   *
+   * @param timestamp
+   * @returns int seconds remaining time or null if negative
+   */
+  function remainingWindowInSeconds(timestamp) {
+    if(typeof timestamp !== 'number') {
+      throw {
+        name: "InternalError",
+        message: `Timestamp expected to be number. Received '${timestamp}'.`,
+        toString: function () {
+          return this.name + ": " + this.message;
+        }
+      };
+    }
+
+    let remaining = ((timestamp + (VALIDATION_WINDOW * 1000)) - Date.now());
+    remaining = Math.floor(remaining / 1000);
+    if (remaining > 0) return remaining;
+    else return null;
+  }
+
+
+  /**
    * Injects remaining lifetime for request
    *
    * @param request
    * @returns request object with requestTimeStamp value
    */
   function updateLifetimeFor(request) {
-    request.requestTimeStamp = Math.floor((300 - (Date.now() - request.requestTimeStamp) / 1000));
+    request.validationWindow = Math.floor((300 - (Date.now() - request.requestTimeStamp) / 1000));
     return request;
   }
 
@@ -107,12 +132,14 @@ async function start() {
 
     // If a still valid request already exists, return this request instead of overwriting it.
     const existingRequest = await requestDb.getLevelDBData(req.body.address);
-    if (existingRequest !== null && !(Date.now() - existingRequest.requestTimeStamp) > (300 * 1000)) {
-      return existingRequest;
+    if (existingRequest !== null && remainingWindowInSeconds(existingRequest.requestTimeStamp)) {
+      existingRequest.validationWindow = remainingWindowInSeconds(existingRequest.requestTimeStamp);
+      return res.send(existingRequest);
     }
 
+    // If no current valid request: Create new one
     await requestDb.addLevelDBData(req.body.address, response);
-    response = updateLifetimeFor(response);
+    response.validationWindow = remainingWindowInSeconds(response.requestTimeStamp);
     res.send(response);
   });
 
@@ -146,7 +173,8 @@ async function start() {
 
     const response = {
       "registerStar": true,
-      "status": {...validatedRequest}
+      "status": {...validatedRequest},
+      "validationWindow": remainingWindowInSeconds(validatedRequest.requestTimeStamp)
     };
 
     res.send(response);
