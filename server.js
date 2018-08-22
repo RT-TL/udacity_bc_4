@@ -174,7 +174,6 @@ async function start() {
     const response = {
       "registerStar": true,
       "status": {...validatedRequest},
-      "validationWindow": remainingWindowInSeconds(validatedRequest.requestTimeStamp)
     };
 
     res.send(response);
@@ -231,7 +230,7 @@ async function start() {
 
     // Invalidate request
     storedRequest.messageSignature = 'invalid';
-    requestDb.addLevelDbData(req.body.address, storedRequest);
+    requestDb.addLevelDBData(req.body.address, storedRequest);
 
     // Add new star
     const newBlockHeight = await bc.addBlock(newStar);
@@ -271,7 +270,10 @@ async function start() {
       res.status(404).send({error: `Block with hash ${req.params.hash} does not exist.`})
     }
 
-    response.map(block => { decodeStory(block.body.star) });
+    // Add story to block if there is a story (which is not in case of genesis block)
+    response.map(block => {
+      if(block.body.star) decodeStory(block.body.star);
+    });
     res.send(response[0]);
   });
 
